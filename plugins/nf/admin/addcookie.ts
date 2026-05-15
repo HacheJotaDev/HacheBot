@@ -1,5 +1,25 @@
 import JSZip from 'jszip'
+import { downloadContentFromMessage } from '@whiskeysockets/baileys'
 import { addCookiesFromText, getStats } from '../../../lib/nfpool.js'
+
+/** Download a document message directly from Baileys (bypasses the broken sock.downloadMediaMessage) */
+async function downloadDoc(m: any): Promise<Buffer> {
+  const raw = m.message
+  let docMsg = raw?.documentMessage || raw?.documentWithCaptionMessage?.message?.documentMessage
+  if (!docMsg) throw new Error('No document found')
+
+  const stream = await downloadContentFromMessage(docMsg, 'document')
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
+
+function getDocInfo(m: any): { fileName: string; isZip: boolean } {
+  const raw = m.message
+  const docMsg = raw?.documentMessage || raw?.documentWithCaptionMessage?.message?.documentMessage
+  const fileName = docMsg?.fileName || ''
+  return { fileName, isZip: fileName.toLowerCase().endsWith('.zip') }
+}
 
 export default {
   command: ['addcookie', 'addc'],
@@ -9,31 +29,26 @@ export default {
     let cookieText = ''
 
     // Check for attached file
-    const msg = m.message
+    const raw = m.message
     const hasDocument =
-      msg?.documentMessage ||
-      msg?.documentWithCaptionMessage?.message?.documentMessage
+      raw?.documentMessage ||
+      raw?.documentWithCaptionMessage?.message?.documentMessage
 
     if (hasDocument) {
       await sock.sendMessage(m.chat, { react: { text: '📥', key: m.key } })
 
       let fileBuffer: Buffer
       try {
-        const stream = await sock.downloadMediaMessage(m)
-        const chunks: Buffer[] = []
-        for await (const chunk of stream) chunks.push(chunk)
-        fileBuffer = Buffer.concat(chunks)
-      } catch {
-        await m.reply('❌ No pude descargar el archivo.')
+        fileBuffer = await downloadDoc(m)
+      } catch (e) {
+        console.error('Download error:', e)
+        await m.reply('❌ No pude descargar el archivo. Intenta enviar el .txt como documento sin comprimir, o pega las cookies directamente.')
         return
       }
 
-      const fileName =
-        msg?.documentMessage?.fileName ||
-        msg?.documentWithCaptionMessage?.message?.documentMessage?.fileName ||
-        ''
+      const { fileName, isZip } = getDocInfo(m)
 
-      if (fileName.endsWith('.zip')) {
+      if (isZip) {
         try {
           const zip = await JSZip.loadAsync(fileBuffer)
           let allText = ''

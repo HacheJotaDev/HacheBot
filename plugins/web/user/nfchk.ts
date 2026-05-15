@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { downloadContentFromMessage } from '@whiskeysockets/baileys'
 import {
   extractCookiesFromBlock,
   buildCookieString,
@@ -7,6 +8,18 @@ import {
   getPlanType,
   getProgressBar,
 } from '../../../lib/netflix.js'
+
+/** Download a document message directly from Baileys */
+async function downloadDoc(m: any): Promise<Buffer> {
+  const raw = m.message
+  let docMsg = raw?.documentMessage || raw?.documentWithCaptionMessage?.message?.documentMessage
+  if (!docMsg) throw new Error('No document found')
+
+  const stream = await downloadContentFromMessage(docMsg, 'document')
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
 
 function formatResult(cookieStr: string, link: string, meta: any): string {
   let c = `🍪 Netflix Cookie\n`
@@ -31,10 +44,10 @@ export default {
   description: 'Verifica archivo .txt/.zip de cookies Netflix',
   category: 'tools',
   run: async (sock: any, m: any, { prefix }: any) => {
-    const msg = m.message
+    const raw = m.message
     const hasDocument =
-      msg?.documentMessage ||
-      msg?.documentWithCaptionMessage?.message?.documentMessage
+      raw?.documentMessage ||
+      raw?.documentWithCaptionMessage?.message?.documentMessage
 
     if (!hasDocument) {
       await sock.sendMessage(m.chat, {
@@ -47,11 +60,9 @@ export default {
 
     let fileBuffer: Buffer
     try {
-      const stream = await sock.downloadMediaMessage(m)
-      const chunks: Buffer[] = []
-      for await (const chunk of stream) chunks.push(chunk)
-      fileBuffer = Buffer.concat(chunks)
-    } catch {
+      fileBuffer = await downloadDoc(m)
+    } catch (e) {
+      console.error('Download error:', e)
       await sock.sendMessage(m.chat, { text: '❌ No pude descargar el archivo.' }, { quoted: m })
       return
     }

@@ -1,4 +1,5 @@
 import JSZip from 'jszip'
+import { downloadContentFromMessage } from '@whiskeysockets/baileys'
 import {
   extractCookiesFromBlock,
   buildCookieString,
@@ -9,6 +10,18 @@ import {
 } from '../../../lib/netflix.js'
 
 const batchSessions = new Map<string, Array<{ [key: string]: string }>>()
+
+/** Download a document message directly from Baileys */
+async function downloadDoc(m: any): Promise<Buffer> {
+  const raw = m.message
+  let docMsg = raw?.documentMessage || raw?.documentWithCaptionMessage?.message?.documentMessage
+  if (!docMsg) throw new Error('No document found')
+
+  const stream = await downloadContentFromMessage(docMsg, 'document')
+  const chunks: Buffer[] = []
+  for await (const chunk of stream) chunks.push(chunk)
+  return Buffer.concat(chunks)
+}
 
 function formatResult(cookieStr: string, link: string, meta: any): string {
   let c = `🍪 Netflix Cookie\n`
@@ -139,10 +152,10 @@ export default {
     const session = batchSessions.get(chatId)
     if (!session) return
 
-    const msg = m.message
+    const raw = m.message
     const hasDocument =
-      msg?.documentMessage ||
-      msg?.documentWithCaptionMessage?.message?.documentMessage
+      raw?.documentMessage ||
+      raw?.documentWithCaptionMessage?.message?.documentMessage
 
     if (!hasDocument) return
 
@@ -150,11 +163,9 @@ export default {
 
     let fileBuffer: Buffer
     try {
-      const stream = await sock.downloadMediaMessage(m)
-      const chunks: Buffer[] = []
-      for await (const chunk of stream) chunks.push(chunk)
-      fileBuffer = Buffer.concat(chunks)
-    } catch {
+      fileBuffer = await downloadDoc(m)
+    } catch (e) {
+      console.error('Download error:', e)
       await sock.sendMessage(m.chat, { text: '❌ No pude descargar el archivo.' }, { quoted: m })
       return
     }
@@ -172,10 +183,8 @@ export default {
     session.push(...extracted)
     batchSessions.set(chatId, session)
 
-    const docName =
-      msg?.documentMessage?.fileName ||
-      msg?.documentWithCaptionMessage?.message?.documentMessage?.fileName ||
-      'archivo.txt'
+    const docMsg = raw?.documentMessage || raw?.documentWithCaptionMessage?.message?.documentMessage
+    const docName = docMsg?.fileName || 'archivo.txt'
 
     await sock.sendMessage(m.chat, {
       text: `✅ *Archivo añadido*\n\n├ 📁 \`${docName}\`\n├ 📥 Cookies: \`${extracted.length}\`\n└ 💾 Total: \`${session.length}\`\n\n_Envía más archivos o usa *${prefix}go*_`,
