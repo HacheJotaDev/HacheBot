@@ -1,5 +1,5 @@
-import { pickCookie, incrementUsage, markDead } from '../../../lib/nfpool.js'
-import { activateTV, extractCookiesFromText } from '../../../lib/netflix.js'
+import { pickCookie, incrementUsage, markDead, getAvailableRegions } from '../../../lib/nfpool.js'
+import { activateTV, extractCookiesFromText, COUNTRIES } from '../../../lib/netflix.js'
 
 export default {
   command: ['tv'],
@@ -11,9 +11,11 @@ export default {
 
     if (!code || !/^\d{8}$/.test(code)) {
       await m.reply(
-        `*Uso:* ${prefix}tv <código 8 dígitos>\n\n` +
-        `*Ejemplo:*\n${prefix}tv 12345678\n\n` +
-        `_Ingresa el código que aparece en tu TV_`
+        `╭───✦ 彡 *NETFLIX TV* 彡\n` +
+        `├● 📺 *Uso* : ${prefix}tv <código 8 dígitos>\n` +
+        `├● 📝 *Ejemplo* : ${prefix}tv 12345678\n` +
+        `├● 💡 *Info* : Ingresa el código de tu TV\n` +
+        `╰───✦ 🚀 by HacheJota`
       )
       return
     }
@@ -21,43 +23,105 @@ export default {
     const senderId = m.sender.split('@')[0]
     const userRegion = global.db.users[senderId]?.region || null
 
-    const cookie = pickCookie(userRegion || undefined)
+    // Try up to 3 different cookies if the first one fails
+    let cookie = pickCookie(userRegion || undefined)
     if (!cookie) {
-      await m.reply('❌ No hay cookies disponibles para activar TV.')
+      const regions = getAvailableRegions()
+      let msg = '❌ No hay cookies disponibles'
+      if (userRegion) msg += ` para la región *${userRegion}*`
+      msg += '.'
+      if (regions.length) {
+        msg += `\n\n🌍 *Regiones disponibles:*\n`
+        regions.forEach(r => {
+          const c = COUNTRIES[r.code]
+          msg += `→ ${c?.flag || '🌍'} \`${r.code}\` (${r.count})\n`
+        })
+      }
+      await m.reply(msg)
       return
     }
 
     await sock.sendMessage(m.chat, { react: { text: '📺', key: m.key } })
 
-    const cd = extractCookiesFromText(cookie.rawCookie)
-    if (!cd) {
-      await m.reply('❌ Error interno al procesar la cookie del pool.')
-      return
-    }
+    const maxRetries = 3
+    for (let i = 0; i < maxRetries; i++) {
+      if (i > 0) {
+        // Pick a different cookie for retry
+        cookie = pickCookie(userRegion || undefined)
+        if (!cookie) {
+          await m.reply('❌ No hay más cookies disponibles para intentar.')
+          return
+        }
+      }
 
-    const result = await activateTV(cd, code)
+      const cd = extractCookiesFromText(cookie.rawCookie)
+      if (!cd) {
+        markDead(cookie.id, 'Cookie parse failed')
+        continue
+      }
 
-    if (!result.success) {
+      const countryInfo = cookie.country ? COUNTRIES[cookie.country] : null
+      const countryLine = countryInfo
+        ? `${countryInfo.flag} ${countryInfo.name}`
+        : cookie.country || 'Desconocido'
+
+      // Send processing message on first attempt
+      if (i === 0) {
+        await m.reply(
+          `╭───✦ 彡 *NETFLIX TV* 彡\n` +
+          `├● 📺 *Código* : ${code}\n` +
+          `├● 🌍 *Cookie* : ${countryLine}\n` +
+          `├● ⏳ *Estado* : Activando...\n` +
+          `╰───✦ 🚀 by HacheJota`
+        )
+      }
+
+      const result = await activateTV(cd, code)
+
+      if (result.success) {
+        incrementUsage(cookie.id)
+        await m.reply(
+          `╭───✦ 彡 *NETFLIX TV* 彡\n` +
+          `├● 📺 *Código* : ${code}\n` +
+          `├● 🌍 *Cookie* : ${countryLine}\n` +
+          `├● ✅ *Estado* : Activada\n` +
+          `├● 🎉 Netflix ya está activo en tu TV\n` +
+          `╰───✦ 🚀 by HacheJota`
+        )
+        await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
+        return
+      }
+
       if (result.dead) {
         markDead(cookie.id, result.error || 'TV activation failed - dead cookie')
       }
+
+      // If the error is about the code itself (not the cookie), don't retry with another cookie
+      if (result.error?.includes('Código inválido') || result.error?.includes('expirado')) {
+        await m.reply(
+          `╭───✦ 彡 *NETFLIX TV* 彡\n` +
+          `├● 📺 *Código* : ${code}\n` +
+          `├● ❌ *Estado* : Fallida\n` +
+          `├● 📝 *Razón* : ${result.error}\n` +
+          `╰───✦ 🚀 by HacheJota`
+        )
+        await sock.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
+        return
+      }
+
+      // Cookie-related error, try next cookie
+      if (i < maxRetries - 1) continue
+
+      // All retries exhausted
       await m.reply(
-        `❌ *ACTIVACIÓN FALLIDA*\n\n` +
-        `📺 Código: ${code}\n` +
-        `📝 Razón: ${result.error}\n\n` +
-        `_Intenta de nuevo con *${prefix}tv ${code}*_`
+        `╭───✦ 彡 *NETFLIX TV* 彡\n` +
+        `├● 📺 *Código* : ${code}\n` +
+        `├● ❌ *Estado* : Fallida\n` +
+        `├● 📝 *Razón* : ${result.error}\n` +
+        `├● 🔄 Intenta: *${prefix}tv ${code}*\n` +
+        `╰───✦ 🚀 by HacheJota`
       )
       await sock.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
-      return
     }
-
-    incrementUsage(cookie.id)
-
-    await m.reply(
-      `✅ *TV ACTIVADA EXITOSAMENTE*\n\n` +
-      `📺 Código: ${code}\n` +
-      `🎉 Netflix ya está activo en tu TV.`
-    )
-    await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
   },
 }
