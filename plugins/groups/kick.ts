@@ -23,8 +23,8 @@ export default {
     try {
       await sock.groupParticipantsUpdate(m.chat, [user], 'remove')
 
-      if (global.db.data.chats[m.chat]) {
-        const chatData = global.db.data.chats[m.chat]
+      if (global.db.chats[m.chat]) {
+        const chatData = global.db.chats[m.chat]
         if (!chatData.logs) chatData.logs = []
         chatData.logs.push({
           action: 'kick',

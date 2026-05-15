@@ -20,7 +20,7 @@ export default {
     try {
       await sock.groupParticipantsUpdate(m.chat, [target], 'demote')
 
-      const chatData = global.db.data.chats[m.chat]
+      const chatData = global.db.chats[m.chat]
 
       if (!chatData.logs) chatData.logs = []
 

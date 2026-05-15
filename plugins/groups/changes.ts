@@ -5,7 +5,7 @@ export default {
   isGroup: true,
   isAdmin: true,
   run: async (sock, m) => {
-    const chatData = global.db.data.chats[m.chat]
+    const chatData = global.db.chats[m.chat]
 
     if (!chatData.logs || chatData.logs.length === 0) {
       return m.reply('*No se registra historial de cambios en este grupo.*')

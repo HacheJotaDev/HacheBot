@@ -45,6 +45,19 @@ async function loadPlugins() {
     }
   }
   cacheLoaded = true
+
+  // Expose unique plugin list globally (for menu.ts)
+  const seen = new Set<string>()
+  const list: any[] = []
+  for (const [, plugin] of commandIndex.entries()) {
+    const main = plugin.command?.[0]
+    if (main && !seen.has(main)) {
+      seen.add(main)
+      list.push(plugin)
+    }
+  }
+  ;(global as any).hachePlugins = list
+
   console.log(chalk.green(`${pluginCache.size} plugins cargados en caché.`))
 }
 
