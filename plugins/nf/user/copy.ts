@@ -35,7 +35,6 @@ export default {
       return
     }
 
-    // Verify cookie is still valid before sharing
     const tokenResult = await generateToken(cd)
     if (!tokenResult.success) {
       markDead(cookie.id, tokenResult.error || 'Token generation failed')
@@ -51,13 +50,14 @@ export default {
 
     const countryInfo = cookie.country ? COUNTRIES[cookie.country] : null
 
-    let msg = `✅ *COOKIE NETFLIX*\n\n`
-    msg += `🍪 *Cookie:*\n\`\`\`${cookie.rawCookie}\`\`\`\n\n`
-    msg += `━━━━━━━━━━━━━━━━\n`
-    if (countryInfo) msg += `${countryInfo.flag} País: ${countryInfo.name}\n`
-    else if (cookie.country) msg += `🌍 País: ${cookie.country}\n`
-    if (cookie.plan) msg += `💎 Plan: ${cookie.plan}\n`
-    msg += `━━━━━━━━━━━━━━━━`
+    let msg = `╭───✦ 彡 *NETFLIX COOKIE* 彡\n`
+    if (countryInfo) msg += `├● ${countryInfo.flag} *País* : ${countryInfo.name}\n`
+    else if (cookie.country) msg += `├● 🌍 *País* : ${cookie.country}\n`
+    else msg += `├● 🌍 *País* : Desconocido\n`
+    if (cookie.plan) msg += `├● 💎 *Plan* : ${cookie.plan}\n`
+    else msg += `├● 💎 *Plan* : Desconocido\n`
+    msg += `├● 🍪 *Cookie* : ${cookie.rawCookie}\n`
+    msg += `╰───✦ 🚀 by HacheJota`
 
     await m.reply(msg)
     await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
