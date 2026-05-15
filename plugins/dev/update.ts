@@ -1,6 +1,6 @@
 import { exec } from 'child_process'
 import { promisify } from 'util'
-import { loadPlugins, pluginCache } from '../../handler.js'
+import { loadPlugins } from '../../handler.js'
 
 const execute = promisify(exec)
 
@@ -21,8 +21,6 @@ export default {
       }
 
       await m.reply('Cambios detectados. Limpiando cache y recargando plugins...')
-
-      pluginCache.clear()
 
       await loadPlugins()
 

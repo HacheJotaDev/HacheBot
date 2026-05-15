@@ -1,114 +1,128 @@
-import { readdirSync, statSync } from 'fs'
-import { pathToFileURL } from 'url'
-import { join as joinPath } from 'path'
-import config from '../../config.ts'
-import moment from 'moment-timezone'
+import { pluginCache } from '../../handler.js'
+import config from '../../config.js'
 
-interface PluginInfo {
-  command: string[]
-  category?: string
-  description?: string
-  use?: string
-  isOwner?: boolean
-  isDev?: boolean
+// ── Category Config ──────────────────────────────────────────────────────────
+const CATEGORY_META: { [key: string]: { icon: string; label: string } } = {
+  general:   { icon: '⚙️',  label: 'GENERAL' },
+  netflix:   { icon: '🎬',  label: 'NETFLIX' },
+  tools:     { icon: '🔧',  label: 'TOOLS' },
+  stickers:  { icon: '🎨',  label: 'STICKERS' },
+  groups:    { icon: '👥',  label: 'GROUPS' },
+  developer: { icon: '💻',  label: 'DEVELOPER' },
+  owner:     { icon: '👑',  label: 'OWNER' },
 }
 
-const CATEGORY_ICONS: { [key: string]: string } = {
-  general: '⚙️',
-  netflix: '🎬',
-  tools: '🔧',
-  stickers: '🎨',
-  groups: '👥',
-  owner: '👑',
-  developer: '💻',
-}
+const CATEGORY_ORDER = ['general', 'netflix', 'tools', 'stickers', 'groups', 'developer', 'owner']
 
-const CATEGORY_ORDER = ['general', 'netflix', 'tools', 'stickers', 'groups']
+// Netflix admin commands (owner-only, no category → OWNER COMMANDS section)
+const NF_ADMIN_CMDS = new Set(['addcookie', 'addc', 'delcookie', 'delc', 'cookies', 'cks', 'refresh', 'rfr', 'detect'])
+// Permission commands (owner-only, no category → PERMISOS section)
+const PERM_CMDS = new Set(['gp', 'ungp', 'glist', 'priv', 'unpriv'])
 
 export default {
   command: ['menu', 'help'],
   category: 'general',
+  description: 'Muestra el menú de comandos',
   run: async (sock: any, m: any, { prefix, isOwner }: any) => {
-    const pluginFolder = joinPath(process.cwd(), 'plugins')
-    const userPlugins: { [cat: string]: PluginInfo[] } = {}
-    const ownerPlugins: { [cat: string]: PluginInfo[] } = {}
+    // ── Collect plugins from handler cache (no dynamic re-imports) ────────
+    const seen = new Set<string>()
+    const userCats: { [cat: string]: any[] } = {}
+    const nfOwnerPlugins: any[] = []
+    const permOwnerPlugins: any[] = []
+    const otherOwnerPlugins: any[] = []
 
-    // Scan all plugins
-    const getFiles = (dir: string): string[] => {
-      const list = readdirSync(dir)
-      return list.reduce((acc: string[], file) => {
-        const filePath = joinPath(dir, file)
-        if (statSync(filePath).isDirectory()) return acc.concat(getFiles(filePath))
-        if (file.endsWith('.ts') || file.endsWith('.js')) acc.push(filePath)
-        return acc
-      }, [])
-    }
+    for (const [filePath, plugin] of pluginCache.entries()) {
+      if (!plugin?.command) continue
 
-    for (const filePath of getFiles(pluginFolder)) {
-      try {
-        const fileUrl = pathToFileURL(filePath).href
-        const plugin = await import(`${fileUrl}?update=${Date.now()}`)
-        const data: PluginInfo = plugin.default
-        if (!data?.command) continue
+      // Deduplicate by primary command
+      const mainCmd = plugin.command[0]
+      if (seen.has(mainCmd)) continue
+      seen.add(mainCmd)
 
-        if (data.category) {
-          const cat = data.category.toLowerCase()
-          if (!userPlugins[cat]) userPlugins[cat] = []
-          userPlugins[cat].push(data)
-        } else if (data.isOwner) {
-          const cat = 'owner'
-          if (!ownerPlugins[cat]) ownerPlugins[cat] = []
-          ownerPlugins[cat].push(data)
+      // Owner-only plugins WITHOUT a category → special owner sections
+      if (plugin.isOwner && !plugin.category) {
+        if (NF_ADMIN_CMDS.has(mainCmd)) {
+          nfOwnerPlugins.push(plugin)
+        } else if (PERM_CMDS.has(mainCmd)) {
+          permOwnerPlugins.push(plugin)
+        } else {
+          otherOwnerPlugins.push(plugin)
         }
-      } catch {}
+        continue
+      }
+
+      // Dev-only plugins without category → skip from menu
+      if (plugin.isDev && !plugin.category) continue
+
+      // Plugins WITH a category
+      if (plugin.category) {
+        // If plugin is owner/dev only and user is NOT owner → skip
+        if ((plugin.isOwner || plugin.isDev) && !isOwner) continue
+
+        const cat = plugin.category.toLowerCase()
+        if (!userCats[cat]) userCats[cat] = []
+        userCats[cat].push(plugin)
+      }
     }
 
-    // Build menu
-    const time = moment().tz('America/Mexico_City').format('HH:mm:ss')
-    const date = moment().tz('America/Mexico_City').format('DD/MM/YYYY')
-    const name = m.pushName || 'User'
+    // ── Sort helper ───────────────────────────────────────────────────────
+    const sortPlugins = (arr: any[]) =>
+      arr.sort((a, b) => a.command[0].localeCompare(b.command[0]))
+
+    // ── Time & System info ────────────────────────────────────────────────
+    const now = new Date()
+    const dateStr = now.toLocaleDateString('es-MX', {
+      timeZone: 'America/Mexico_City',
+      day: '2-digit', month: '2-digit', year: 'numeric',
+    })
+    const timeStr = now.toLocaleTimeString('es-MX', {
+      timeZone: 'America/Mexico_City',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    })
     const up = process.uptime()
     const uptimeStr = `${Math.floor(up / 3600)}h ${Math.floor((up % 3600) / 60)}m`
     const ram = `${(process.memoryUsage().heapUsed / 1024 / 1024).toFixed(0)} MB`
+    const name = m.pushName || 'User'
 
-    // Header
-    let menu = `╭━━━━━━━━━━━━━━━━━━━━━━━━╮\n`
+    // ── Build menu ────────────────────────────────────────────────────────
+    let menu = ''
+    menu += `╭━━━━━━━━━━━━━━━━━━━━━━━━╮\n`
     menu += `┃ ✦ *HACHEBOT* ✦\n`
     menu += `┃ ────────────────────────\n`
     menu += `┃ 👋 Hola, *${name}*\n`
-    menu += `┃ 🕐 ${date} • ${time}\n`
+    menu += `┃ 🕐 ${dateStr} • ${timeStr}\n`
     menu += `┃ ⏱️ Uptime: ${uptimeStr}\n`
     menu += `┃ 💾 RAM: ${ram}\n`
     menu += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n`
 
     // Netflix pool info
     try {
-      const { getStats } = await import('../../../lib/nfpool.js')
+      const { getStats } = await import('../../lib/nfpool.js')
       const stats = getStats()
       if (stats.total > 0) {
         menu += `\n🎬 *Pool Netflix:* \`${stats.active}\` activas / \`${stats.total}\` total\n`
       }
     } catch {}
 
-    // User categories
-    const allCats = Object.keys(userPlugins)
+    // ── User categories (sorted) ──────────────────────────────────────────
+    const allCats = Object.keys(userCats)
     const sortedCats = [
       ...CATEGORY_ORDER.filter(c => allCats.includes(c)),
       ...allCats.filter(c => !CATEGORY_ORDER.includes(c)).sort(),
     ]
 
     for (const cat of sortedCats) {
-      const icon = CATEGORY_ICONS[cat] || '📁'
-      const plugins = userPlugins[cat]
-      if (!plugins?.length) continue
+      const meta = CATEGORY_META[cat] || { icon: '📁', label: cat.toUpperCase() }
+      const plugins = sortPlugins(userCats[cat])
+      if (!plugins.length) continue
 
-      menu += `\n${icon} *${cat.toUpperCase()}*\n`
+      menu += `\n${meta.icon} *${meta.label}*\n`
       menu += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`
 
       for (const p of plugins) {
         const mainCmd = p.command[0]
         const aliases = p.command.length > 1
-          ? ` (${p.command.slice(1).map(a => prefix + a).join(', ')})`
+          ? ` (${p.command.slice(1).map((a: string) => prefix + a).join(', ')})`
           : ''
         const desc = p.description ? ` — _${p.description}_` : ''
         const usage = p.use ? ` \`${p.use}\`` : ''
@@ -116,42 +130,60 @@ export default {
       }
     }
 
-    // Owner section (only if isOwner)
+    // ── Owner Commands Section (only for owners) ──────────────────────────
     if (isOwner) {
-      const ownerCats = Object.keys(ownerPlugins)
-      if (ownerCats.length) {
+      const hasNfAdmin = nfOwnerPlugins.length > 0
+      const hasPerms = permOwnerPlugins.length > 0
+      const hasOther = otherOwnerPlugins.length > 0
+
+      if (hasNfAdmin || hasPerms || hasOther) {
         menu += `\n╭━━━━━━━━━━━━━━━━━━━━━━━━╮\n`
         menu += `┃ 👑 *OWNER COMMANDS* 👑\n`
         menu += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n`
 
-        for (const cat of ownerCats) {
-          const plugins = ownerPlugins[cat]
-          if (!plugins?.length) continue
-
-          for (const p of plugins) {
+        // Netflix admin subsection
+        if (hasNfAdmin) {
+          for (const p of sortPlugins(nfOwnerPlugins)) {
             const mainCmd = p.command[0]
             const aliases = p.command.length > 1
-              ? ` (${p.command.slice(1).map(a => prefix + a).join(', ')})`
+              ? ` (${p.command.slice(1).map((a: string) => prefix + a).join(', ')})`
               : ''
             const desc = p.description ? ` — _${p.description}_` : ''
             const usage = p.use ? ` \`${p.use}\`` : ''
             menu += `  🔑 ${prefix}${mainCmd}${usage}${aliases}${desc}\n`
           }
         }
-      }
 
-      // Permission controls
-      menu += `\n🛡️ *PERMISOS*\n`
-      menu += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`
-      menu += `  🔑 ${prefix}gp — _Autorizar grupo_\n`
-      menu += `  🔑 ${prefix}ungp — _Desautorizar grupo_\n`
-      menu += `  🔑 ${prefix}glist — _Grupos autorizados_\n`
-      menu += `  🔑 ${prefix}priv — _Habilitar privados_\n`
-      menu += `  🔑 ${prefix}unpriv — _Deshabilitar privados_\n`
+        // Permission subsection
+        if (hasPerms) {
+          menu += `\n🛡️ *PERMISOS*\n`
+          menu += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`
+          for (const p of sortPlugins(permOwnerPlugins)) {
+            const mainCmd = p.command[0]
+            const aliases = p.command.length > 1
+              ? ` (${p.command.slice(1).map((a: string) => prefix + a).join(', ')})`
+              : ''
+            const desc = p.description ? ` — _${p.description}_` : ''
+            menu += `  🔑 ${prefix}${mainCmd}${aliases}${desc}\n`
+          }
+        }
+
+        // Other owner plugins
+        if (hasOther) {
+          for (const p of sortPlugins(otherOwnerPlugins)) {
+            const mainCmd = p.command[0]
+            const aliases = p.command.length > 1
+              ? ` (${p.command.slice(1).map((a: string) => prefix + a).join(', ')})`
+              : ''
+            const desc = p.description ? ` — _${p.description}_` : ''
+            menu += `  🔑 ${prefix}${mainCmd}${aliases}${desc}\n`
+          }
+        }
+      }
     }
 
-    // Footer
-    const totalCmds = Object.keys(userPlugins).reduce((s, k) => s + userPlugins[k].length, 0)
+    // ── Footer ────────────────────────────────────────────────────────────
+    const totalCmds = seen.size
     menu += `\n╭━━━━━━━━━━━━━━━━━━━━━━━━╮\n`
     menu += `┃ Prefijo: ${config.prefix.map((p: string) => `\`${p}\``).join(' ')}\n`
     menu += `┃ Plugins: \`${totalCmds}\` comandos\n`
@@ -162,7 +194,7 @@ export default {
       contextInfo: {
         externalAdReply: {
           title: 'HacheBot',
-          body: `${date} • ${time}`,
+          body: `${dateStr} • ${timeStr}`,
           mediaType: 1,
           renderLargerThumbnail: false,
           thumbnailUrl: 'https://i.ibb.co/xQ5SM1s/7268d712b954.jpg',

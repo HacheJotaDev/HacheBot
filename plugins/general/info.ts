@@ -37,7 +37,7 @@ export default {
 
     // Netflix pool info (safe import)
     try {
-      const { getStats } = await import('../../../lib/nfpool.js')
+      const { getStats } = await import('../../lib/nfpool.js')
       const stats = getStats()
       info += `\n🎬 *NETFLIX POOL*\n`
       info += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`

@@ -202,6 +202,12 @@ export function deleteCookieById(id: string): boolean {
   return true
 }
 
+// ── Get Full Pool ─────────────────────────────────────────────────────────────
+
+export function getPool(): NFPool {
+  return readPool()
+}
+
 // ── Stats ────────────────────────────────────────────────────────────────────
 
 export function getStats() {

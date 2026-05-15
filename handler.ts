@@ -29,6 +29,7 @@ const getFiles = (dir: string): string[] => {
 async function loadPlugins() {
   const pluginFolder = join(process.cwd(), 'plugins')
   const pluginFiles = getFiles(pluginFolder)
+  pluginCache.clear()
   commandIndex.clear()
   for (const fullPath of pluginFiles) {
     try {
