@@ -197,6 +197,7 @@ export default async function handler(sock: any, m: any) {
         commandName,
         isAdmins,
         isBotAdmin,
+        isOwner,
         senderJid,
         text,
         command,
