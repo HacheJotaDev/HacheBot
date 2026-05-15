@@ -1,5 +1,5 @@
-import { getStats } from '../../lib/nfpool.js'
-import { COUNTRIES } from '../../lib/netflix.js'
+import { getStats } from '../../../lib/nfpool.js'
+import { COUNTRIES } from '../../../lib/netflix.js'
 
 export default {
   command: ['cookies', 'cks'],

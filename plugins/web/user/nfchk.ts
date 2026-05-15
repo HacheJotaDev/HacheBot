@@ -6,7 +6,7 @@ import {
   getMetadata,
   getPlanType,
   getProgressBar,
-} from '../../lib/netflix.js'
+} from '../../../lib/netflix.js'
 
 function formatResult(cookieStr: string, link: string, meta: any): string {
   let c = `🍪 Netflix Cookie\n`

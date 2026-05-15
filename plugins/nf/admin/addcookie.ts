@@ -1,5 +1,5 @@
 import JSZip from 'jszip'
-import { addCookiesFromText, getStats } from '../../lib/nfpool.js'
+import { addCookiesFromText, getStats } from '../../../lib/nfpool.js'
 
 export default {
   command: ['addcookie', 'addc'],
@@ -51,10 +51,8 @@ export default {
         cookieText = fileBuffer.toString('utf-8')
       }
     } else if (m.quoted?.text) {
-      // Reply to a message containing cookie text
       cookieText = m.quoted.text
     } else if (text) {
-      // Direct text input
       cookieText = text
     }
 

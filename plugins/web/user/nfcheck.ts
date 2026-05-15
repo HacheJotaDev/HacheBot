@@ -4,7 +4,7 @@ import {
   generateToken,
   getMetadata,
   COUNTRIES,
-} from '../../lib/netflix.js'
+} from '../../../lib/netflix.js'
 
 export default {
   command: ['nfcheck', 'cookie'],

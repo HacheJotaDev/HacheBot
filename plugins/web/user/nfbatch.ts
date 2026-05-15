@@ -6,7 +6,7 @@ import {
   getMetadata,
   getPlanType,
   getProgressBar,
-} from '../../lib/netflix.js'
+} from '../../../lib/netflix.js'
 
 const batchSessions = new Map<string, Array<{ [key: string]: string }>>()
 

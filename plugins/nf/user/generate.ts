@@ -1,12 +1,11 @@
-import { pickCookie, incrementUsage, markDead, getAvailableRegions } from '../../lib/nfpool.js'
-import { generateToken, getMetadata, extractCookiesFromText, COUNTRIES } from '../../lib/netflix.js'
+import { pickCookie, incrementUsage, markDead, getAvailableRegions } from '../../../lib/nfpool.js'
+import { generateToken, getMetadata, extractCookiesFromText, COUNTRIES } from '../../../lib/netflix.js'
 
 export default {
   command: ['generate', 'gen'],
   category: 'netflix',
   description: 'Genera un link NFToken de Netflix',
   run: async (sock: any, m: any, { prefix }: any) => {
-    // Get user's region preference
     const senderId = m.sender.split('@')[0]
     const userRegion = global.db.users[senderId]?.region || null
 

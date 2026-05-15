@@ -1,4 +1,4 @@
-import { deleteCookies, deleteCookieById, getPool } from '../../lib/nfpool.js'
+import { deleteCookies, deleteCookieById } from '../../../lib/nfpool.js'
 
 export default {
   command: ['delcookie', 'delc'],

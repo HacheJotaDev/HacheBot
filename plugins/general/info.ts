@@ -1,6 +1,5 @@
 import os from 'os'
 import moment from 'moment-timezone'
-import { getStats } from '../../lib/nfpool.js'
 
 export default {
   command: ['info', 'botinfo'],
@@ -36,8 +35,9 @@ export default {
     info += `◈ RAM Bot: ${memBot} MB\n`
     info += `◈ RAM Libre: ${memFree} / ${memTotal} MB\n`
 
-    // Netflix pool info
+    // Netflix pool info (safe import)
     try {
+      const { getStats } = await import('../../../lib/nfpool.js')
       const stats = getStats()
       info += `\n🎬 *NETFLIX POOL*\n`
       info += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`

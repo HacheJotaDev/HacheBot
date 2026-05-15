@@ -1,5 +1,5 @@
-import { getPool, updateCookie } from '../../lib/nfpool.js'
-import { extractCountryFromNetflixId, extractCookiesFromText, getMetadata, COUNTRIES } from '../../lib/netflix.js'
+import { getPool, updateCookie } from '../../../lib/nfpool.js'
+import { extractCountryFromNetflixId, extractCookiesFromText, getMetadata, COUNTRIES } from '../../../lib/netflix.js'
 
 export default {
   command: ['detect'],

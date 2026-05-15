@@ -1,5 +1,5 @@
-import { getAvailableRegions } from '../../lib/nfpool.js'
-import { COUNTRIES } from '../../lib/netflix.js'
+import { getAvailableRegions } from '../../../lib/nfpool.js'
+import { COUNTRIES } from '../../../lib/netflix.js'
 
 export default {
   command: ['region', 'rg'],

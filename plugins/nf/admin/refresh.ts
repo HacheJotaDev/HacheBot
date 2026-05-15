@@ -1,5 +1,5 @@
-import { getPool, markDead, updateCookie } from '../../lib/nfpool.js'
-import { generateToken, getMetadata, extractCookiesFromText, getProgressBar } from '../../lib/netflix.js'
+import { getPool, markDead, updateCookie } from '../../../lib/nfpool.js'
+import { generateToken, getMetadata, extractCookiesFromText, getProgressBar } from '../../../lib/netflix.js'
 
 export default {
   command: ['refresh', 'rfr'],

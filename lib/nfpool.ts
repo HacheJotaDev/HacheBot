@@ -19,25 +19,34 @@ export interface NFPool {
   nextId: number
 }
 
-// ── Pool Access ──────────────────────────────────────────────────────────────
+// ── Pool Access (safe with deep proxy) ───────────────────────────────────────
+// We store the pool as a JSON string in global.db.settings['nf_pool_data']
+// This avoids the deep proxy bug where nested mutations persist wrong data.
+// Every operation reads → modifies → writes back the entire pool atomically.
 
-export function getPool(): NFPool {
-  if (!global.db.settings['nf_pool']) {
-    global.db.settings['nf_pool'] = { cookies: {}, nextId: 1 }
-  }
-  return global.db.settings['nf_pool']
+function readPool(): NFPool {
+  try {
+    const entry = global.db.settings['nf_pool_data']
+    if (entry?.value) return JSON.parse(entry.value)
+  } catch {}
+  return { cookies: {}, nextId: 1 }
+}
+
+function writePool(pool: NFPool) {
+  global.db.settings['nf_pool_data'] = { value: JSON.stringify(pool) }
 }
 
 // ── Add Cookies ──────────────────────────────────────────────────────────────
 
 export function addCookie(rawCookie: string): { added: boolean; id: string; duplicate?: string } {
-  const pool = getPool()
   const cd = extractCookiesFromText(rawCookie)
   if (!cd?.NetflixId) return { added: false, id: '' }
 
+  const pool = readPool()
+
   // Deduplicate by NetflixId
   for (const [cid, entry] of Object.entries(pool.cookies)) {
-    if ((entry as CookieEntry).netflixId === cd.NetflixId) {
+    if (entry.netflixId === cd.NetflixId) {
       return { added: false, id: cid, duplicate: cid }
     }
   }
@@ -56,6 +65,7 @@ export function addCookie(rawCookie: string): { added: boolean; id: string; dupl
     addedAt: Date.now(),
   }
   pool.nextId = pool.nextId + 1
+  writePool(pool)
 
   return { added: true, id }
 }
@@ -63,7 +73,6 @@ export function addCookie(rawCookie: string): { added: boolean; id: string; dupl
 export function addCookiesFromText(text: string): { added: number; duplicates: number; failed: number } {
   const blocks = extractCookiesFromBlock(text)
   if (!blocks.length) {
-    // Try as single raw cookie text
     const result = addCookie(text)
     return {
       added: result.added ? 1 : 0,
@@ -86,7 +95,7 @@ export function addCookiesFromText(text: string): { added: number; duplicates: n
 // ── Query ────────────────────────────────────────────────────────────────────
 
 export function getActiveCookies(region?: string): CookieEntry[] {
-  const pool = getPool()
+  const pool = readPool()
   let cookies = Object.values(pool.cookies).filter(c => c.status === 'ACTIVE')
   if (region) {
     cookies = cookies.filter(c => c.country === region)
@@ -101,7 +110,7 @@ export function pickCookie(region?: string): CookieEntry | null {
 }
 
 export function getAvailableRegions(): { code: string; count: number }[] {
-  const pool = getPool()
+  const pool = readPool()
   const counts: { [code: string]: number } = {}
   Object.values(pool.cookies)
     .filter(c => c.status === 'ACTIVE' && c.country)
@@ -116,36 +125,40 @@ export function getAvailableRegions(): { code: string; count: number }[] {
 // ── Modify ───────────────────────────────────────────────────────────────────
 
 export function markDead(id: string, error: string) {
-  const pool = getPool()
+  const pool = readPool()
   if (pool.cookies[id]) {
     pool.cookies[id].status = 'DEAD'
     pool.cookies[id].lastError = error
+    writePool(pool)
   }
 }
 
 export function updateCookie(id: string, updates: Partial<CookieEntry>) {
-  const pool = getPool()
+  const pool = readPool()
   if (pool.cookies[id]) {
     for (const [key, value] of Object.entries(updates)) {
       pool.cookies[id][key] = value
     }
+    writePool(pool)
   }
 }
 
 export function incrementUsage(id: string) {
-  const pool = getPool()
+  const pool = readPool()
   if (pool.cookies[id]) {
     pool.cookies[id].usedCount = (pool.cookies[id].usedCount || 0) + 1
     pool.cookies[id].lastUsed = Date.now()
+    writePool(pool)
   }
 }
 
 export function deleteCookies(type: 'dead' | 'all' | 'dup'): number {
-  const pool = getPool()
+  const pool = readPool()
 
   if (type === 'all') {
     const deleted = Object.keys(pool.cookies).length
     pool.cookies = {}
+    writePool(pool)
     return deleted
   }
 
@@ -158,6 +171,7 @@ export function deleteCookies(type: 'dead' | 'all' | 'dup'): number {
       else remaining[id] = c
     }
     pool.cookies = remaining
+    writePool(pool)
     return deleted
   }
 
@@ -173,6 +187,7 @@ export function deleteCookies(type: 'dead' | 'all' | 'dup'): number {
       }
     }
     pool.cookies = remaining
+    writePool(pool)
     return deleted
   }
 
@@ -180,20 +195,17 @@ export function deleteCookies(type: 'dead' | 'all' | 'dup'): number {
 }
 
 export function deleteCookieById(id: string): boolean {
-  const pool = getPool()
+  const pool = readPool()
   if (!pool.cookies[id]) return false
-  const remaining: { [cid: string]: CookieEntry } = {}
-  for (const [cid, c] of Object.entries(pool.cookies)) {
-    if (cid !== id) remaining[cid] = c
-  }
-  pool.cookies = remaining
+  delete pool.cookies[id]
+  writePool(pool)
   return true
 }
 
 // ── Stats ────────────────────────────────────────────────────────────────────
 
 export function getStats() {
-  const pool = getPool()
+  const pool = readPool()
   const cookies = Object.values(pool.cookies)
   const total = cookies.length
   const active = cookies.filter(c => c.status === 'ACTIVE').length

@@ -1,5 +1,5 @@
-import { pickCookie, incrementUsage, markDead, getAvailableRegions } from '../../lib/nfpool.js'
-import { activateTV, extractCookiesFromText, COUNTRIES } from '../../lib/netflix.js'
+import { pickCookie, incrementUsage, markDead } from '../../../lib/nfpool.js'
+import { activateTV, extractCookiesFromText } from '../../../lib/netflix.js'
 
 export default {
   command: ['tv'],

@@ -1,9 +1,8 @@
 import { readdirSync, statSync } from 'fs'
 import { pathToFileURL } from 'url'
 import { join as joinPath } from 'path'
-import os from 'os'
+import config from '../../config.ts'
 import moment from 'moment-timezone'
-import { getStats } from '../../lib/nfpool.js'
 
 interface PluginInfo {
   command: string[]
@@ -82,15 +81,16 @@ export default {
     menu += `┃ 💾 RAM: ${ram}\n`
     menu += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯\n`
 
-    // Netflix pool info (if available)
+    // Netflix pool info
     try {
+      const { getStats } = await import('../../../lib/nfpool.js')
       const stats = getStats()
       if (stats.total > 0) {
         menu += `\n🎬 *Pool Netflix:* \`${stats.active}\` activas / \`${stats.total}\` total\n`
       }
     } catch {}
 
-    // User categories (sorted by defined order, then alphabetical)
+    // User categories
     const allCats = Object.keys(userPlugins)
     const sortedCats = [
       ...CATEGORY_ORDER.filter(c => allCats.includes(c)),
@@ -140,7 +140,7 @@ export default {
         }
       }
 
-      // Permission controls (always show to owner)
+      // Permission controls
       menu += `\n🛡️ *PERMISOS*\n`
       menu += `┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n`
       menu += `  🔑 ${prefix}gp — _Autorizar grupo_\n`
@@ -151,9 +151,10 @@ export default {
     }
 
     // Footer
+    const totalCmds = Object.keys(userPlugins).reduce((s, k) => s + userPlugins[k].length, 0)
     menu += `\n╭━━━━━━━━━━━━━━━━━━━━━━━━╮\n`
-    menu += `┃ Prefijo: ${config.prefix.map(p => `\`${p}\``).join(' ')}\n`
-    menu += `┃ Plugins: \`${Object.keys(userPlugins).reduce((s, k) => s + userPlugins[k].length, 0)}\` comandos\n`
+    menu += `┃ Prefijo: ${config.prefix.map((p: string) => `\`${p}\``).join(' ')}\n`
+    menu += `┃ Plugins: \`${totalCmds}\` comandos\n`
     menu += `╰━━━━━━━━━━━━━━━━━━━━━━━━╯`
 
     await sock.sendMessage(m.chat, {
