@@ -14,15 +14,19 @@ const devSet = new Set(config.devs.map((n: string) => n + '@s.whatsapp.net'))
 
 const getFiles = (dir: string): string[] => {
   let results: string[] = []
-  const list = readdirSync(dir)
-  list.forEach(file => {
-    const filePath = join(dir, file)
-    if (statSync(filePath).isDirectory()) {
-      results = results.concat(getFiles(filePath))
-    } else if (file.endsWith('.ts') || file.endsWith('.js')) {
-      results.push(filePath)
-    }
-  })
+  try {
+    const list = readdirSync(dir)
+    list.forEach(file => {
+      const filePath = join(dir, file)
+      try {
+        if (statSync(filePath).isDirectory()) {
+          results = results.concat(getFiles(filePath))
+        } else if (file.endsWith('.ts') || file.endsWith('.js')) {
+          results.push(filePath)
+        }
+      } catch {}
+    })
+  } catch {}
   return results
 }
 
@@ -61,6 +65,20 @@ async function resolveJid(sender: string, sock: any, chat: string): Promise<stri
   return resolved
 }
 
+/** Check if any form of the sender's ID matches the owner list */
+function checkOwner(senderJid: string, rawSender: string): boolean {
+  if (ownerSet.has(senderJid)) return true
+  // Fallback: check raw sender (might be phone@lid or phone@s.whatsapp.net)
+  if (rawSender && ownerSet.has(rawSender)) return true
+  // Fallback: extract phone number and check
+  const phone = (senderJid.split('@')[0] || '').split(':')[0]
+  for (const owner of ownerSet) {
+    const ownerPhone = owner.split('@')[0]
+    if (phone === ownerPhone) return true
+  }
+  return false
+}
+
 export default async function handler(sock: any, m: any) {
   try {
     if (!m.message) return
@@ -97,7 +115,7 @@ export default async function handler(sock: any, m: any) {
 
     const senderId = senderJid.split('@')[0]
     const botId = sock?.user?.id.split(':')[0] + '@s.whatsapp.net'
-    const isOwner = ownerSet.has(senderJid)
+    const isOwner = checkOwner(senderJid, m.sender)
 
     // ── Permission checks ──────────────────────────────────────────────
     if (!m.isGroup && !isOwner) {
@@ -118,7 +136,7 @@ export default async function handler(sock: any, m: any) {
       global.db.chats[m.chat] = { id: m.chat, detect: true, welcome: true, antilink: true }
     }
     if (!global.db.settings[botId]) {
-      global.db.users[botId] = { bot: botId }
+      global.db.settings[botId] = { bot: botId }
     }
 
     let groupMetadata = null
@@ -183,7 +201,7 @@ export default async function handler(sock: any, m: any) {
     console.log(`${BAR} ${label('TIME:')} ${value(time)}`)
     console.log(border('╰───────────────────────────────────────╯'))
 
-    if (cmd.isOwner && !ownerSet.has(senderJid)) return m.reply('Dueño solamente.')
+    if (cmd.isOwner && !isOwner) return m.reply('Dueño solamente.')
     if (cmd.isDev && !devSet.has(senderJid)) return m.reply('Creador solamente.')
     if (cmd.isGroup && !m.isGroup) return m.reply('Grupos solamente.')
     if (cmd.isAdmin && !isAdmins) return m.reply('Admins solamente.')
