@@ -9,20 +9,6 @@ const pluginCache: Map<string, any> = new Map()
 const commandIndex: Map<string, any> = new Map()
 let cacheLoaded = false
 
-// Build unique plugin list from commandIndex (deduplicated by primary command)
-function buildPluginList(): any[] {
-  const seen = new Set<string>()
-  const list: any[] = []
-  for (const [, plugin] of commandIndex.entries()) {
-    const main = plugin.command?.[0]
-    if (main && !seen.has(main)) {
-      seen.add(main)
-      list.push(plugin)
-    }
-  }
-  return list
-}
-
 const ownerSet = new Set(config.owners.map((n: string) => n + '@s.whatsapp.net'))
 const devSet = new Set(config.devs.map((n: string) => n + '@s.whatsapp.net'))
 
@@ -214,7 +200,6 @@ export default async function handler(sock: any, m: any) {
         senderJid,
         text,
         command,
-        plugins: buildPluginList(),
       })
     } catch (e: any) {
       console.error(chalk.red(`Error en plugin '${commandName}':`), e)
