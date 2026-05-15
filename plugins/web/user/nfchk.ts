@@ -87,7 +87,7 @@ export default {
       const cd = cookiesList[i]
       const tokenResult = await generateToken(cd)
 
-      if (tokenResult.ok && tokenResult.token) {
+      if (tokenResult.success && tokenResult.token) {
         hits++
         const meta = await getMetadata(cd)
         validResults.push({

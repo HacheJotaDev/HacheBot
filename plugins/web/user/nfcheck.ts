@@ -3,18 +3,29 @@ import {
   buildCookieString,
   generateToken,
   getMetadata,
+  COUNTRIES,
 } from '../../lib/netflix.js'
 
 export default {
   command: ['nfcheck', 'cookie'],
   description: 'Verifica una cookie de Netflix y genera NFToken',
   category: 'tools',
-  run: async (sock: any, m: any, { args, prefix }: any) => {
-    const rawText = args?.join(' ')?.trim()
+  run: async (sock: any, m: any, { text, prefix }: any) => {
+    // Support: direct text, reply to message, or quoted text
+    let rawText = text?.trim()
+
+    if (!rawText && m.quoted?.text) {
+      rawText = m.quoted.text.trim()
+    }
 
     if (!rawText) {
       await sock.sendMessage(m.chat, {
-        text: `*Uso:* ${prefix}nfcheck <cookie>\n\n*Ejemplo:*\n${prefix}nfcheck NetflixId=xxx; SecureNetflixId=yyy; nfvdid=zzz\n\n*Formatos soportados:* Raw, Netscape, JSON`,
+        text:
+          `*Uso:* ${prefix}nfcheck <cookie>\n\n` +
+          `*Opciones:*\n` +
+          `→ ${prefix}nfcheck NetflixId=xxx; SecureNetflixId=yyy; nfvdid=zzz\n` +
+          `→ Responde a un mensaje con cookies + ${prefix}nfcheck\n\n` +
+          `*Formatos soportados:* Raw, Netscape, JSON`,
       }, { quoted: m })
       return
     }
@@ -23,29 +34,29 @@ export default {
 
     const cd = extractCookiesFromText(rawText)
     if (!cd) {
-      await sock.sendMessage(m.chat, { text: '❌ No se detectaron cookies válidas.' }, { quoted: m })
+      await m.reply('❌ No se detectaron cookies válidas en el texto proporcionado.')
       return
     }
 
     const tokenResult = await generateToken(cd)
 
     if (!tokenResult.success) {
-      await sock.sendMessage(m.chat, {
-        text: `❌ *Cookie inválida*\nRazón: ${tokenResult.error}`,
-      }, { quoted: m })
+      await m.reply(`❌ *Cookie inválida*\n\n📝 Razón: ${tokenResult.error}`)
       await sock.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
       return
     }
 
     const meta = await getMetadata(cd)
     const cookieStr = buildCookieString(cd)
+    const countryInfo = meta.country ? COUNTRIES[meta.country] : null
 
     let msg = `✅ *NETFLIX COOKIE VÁLIDA*\n\n`
     msg += `🍪 *Cookie:*\n\`\`\`${cookieStr}\`\`\`\n\n`
 
     if (meta.success) {
       msg += `━━━━━━━━━━━━━━━━\n`
-      if (meta.country) msg += `🌍 País: ${meta.country}\n`
+      if (countryInfo) msg += `${countryInfo.flag} País: ${countryInfo.name} (${meta.country})\n`
+      else if (meta.country) msg += `🌍 País: ${meta.country}\n`
       if (meta.plan) msg += `💎 Plan: ${meta.plan}\n`
       if (meta.planPrice) msg += `💰 Precio: ${meta.planPrice}\n`
       if (meta.videoQuality) msg += `📺 Calidad: ${meta.videoQuality}\n`
@@ -57,7 +68,7 @@ export default {
 
     msg += `🔗 *NFToken Link:*\n${tokenResult.link}`
 
-    await sock.sendMessage(m.chat, { text: msg }, { quoted: m })
+    await m.reply(msg)
     await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
   },
 }

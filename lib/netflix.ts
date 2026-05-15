@@ -32,6 +32,82 @@ export interface CheckResult {
   error?: string
 }
 
+export interface TVActivateResult {
+  success: boolean
+  dead?: boolean
+  error?: string
+}
+
+// ── Countries ────────────────────────────────────────────────────────────────
+export const COUNTRIES: { [code: string]: { name: string; flag: string } } = {
+  'US': { name: 'Estados Unidos', flag: '🇺🇸' },
+  'MX': { name: 'México', flag: '🇲🇽' },
+  'PE': { name: 'Perú', flag: '🇵🇪' },
+  'CO': { name: 'Colombia', flag: '🇨🇴' },
+  'AR': { name: 'Argentina', flag: '🇦🇷' },
+  'CL': { name: 'Chile', flag: '🇨🇱' },
+  'BR': { name: 'Brasil', flag: '🇧🇷' },
+  'ES': { name: 'España', flag: '🇪🇸' },
+  'CA': { name: 'Canadá', flag: '🇨🇦' },
+  'DE': { name: 'Alemania', flag: '🇩🇪' },
+  'FR': { name: 'Francia', flag: '🇫🇷' },
+  'GB': { name: 'Reino Unido', flag: '🇬🇧' },
+  'JP': { name: 'Japón', flag: '🇯🇵' },
+  'IT': { name: 'Italia', flag: '🇮🇹' },
+  'AU': { name: 'Australia', flag: '🇦🇺' },
+  'NL': { name: 'Países Bajos', flag: '🇳🇱' },
+  'SE': { name: 'Suecia', flag: '🇸🇪' },
+  'NO': { name: 'Noruega', flag: '🇳🇴' },
+  'DK': { name: 'Dinamarca', flag: '🇩🇰' },
+  'FI': { name: 'Finlandia', flag: '🇫🇮' },
+  'BE': { name: 'Bélgica', flag: '🇧🇪' },
+  'AT': { name: 'Austria', flag: '🇦🇹' },
+  'CH': { name: 'Suiza', flag: '🇨🇭' },
+  'PT': { name: 'Portugal', flag: '🇵🇹' },
+  'PL': { name: 'Polonia', flag: '🇵🇱' },
+  'CZ': { name: 'República Checa', flag: '🇨🇿' },
+  'HU': { name: 'Hungría', flag: '🇭🇺' },
+  'RO': { name: 'Rumania', flag: '🇷🇴' },
+  'BG': { name: 'Bulgaria', flag: '🇧🇬' },
+  'HR': { name: 'Croacia', flag: '🇭🇷' },
+  'SK': { name: 'Eslovaquia', flag: '🇸🇰' },
+  'SI': { name: 'Eslovenia', flag: '🇸🇮' },
+  'EE': { name: 'Estonia', flag: '🇪🇪' },
+  'LV': { name: 'Letonia', flag: '🇱🇻' },
+  'LT': { name: 'Lituania', flag: '🇱🇹' },
+  'GR': { name: 'Grecia', flag: '🇬🇷' },
+  'TR': { name: 'Turquía', flag: '🇹🇷' },
+  'IL': { name: 'Israel', flag: '🇮🇱' },
+  'ZA': { name: 'Sudáfrica', flag: '🇿🇦' },
+  'NG': { name: 'Nigeria', flag: '🇳🇬' },
+  'EG': { name: 'Egipto', flag: '🇪🇬' },
+  'KR': { name: 'Corea del Sur', flag: '🇰🇷' },
+  'TW': { name: 'Taiwán', flag: '🇹🇼' },
+  'HK': { name: 'Hong Kong', flag: '🇭🇰' },
+  'SG': { name: 'Singapur', flag: '🇸🇬' },
+  'TH': { name: 'Tailandia', flag: '🇹🇭' },
+  'PH': { name: 'Filipinas', flag: '🇵🇭' },
+  'MY': { name: 'Malasia', flag: '🇲🇾' },
+  'ID': { name: 'Indonesia', flag: '🇮🇩' },
+  'IN': { name: 'India', flag: '🇮🇳' },
+  'EC': { name: 'Ecuador', flag: '🇪🇨' },
+  'VE': { name: 'Venezuela', flag: '🇻🇪' },
+  'UY': { name: 'Uruguay', flag: '🇺🇾' },
+  'PY': { name: 'Paraguay', flag: '🇵🇾' },
+  'BO': { name: 'Bolivia', flag: '🇧🇴' },
+  'DO': { name: 'República Dominicana', flag: '🇩🇴' },
+  'PA': { name: 'Panamá', flag: '🇵🇦' },
+  'CR': { name: 'Costa Rica', flag: '🇨🇷' },
+  'GT': { name: 'Guatemala', flag: '🇬🇹' },
+  'SV': { name: 'El Salvador', flag: '🇸🇻' },
+  'HN': { name: 'Honduras', flag: '🇭🇳' },
+  'NI': { name: 'Nicaragua', flag: '🇳🇮' },
+  'CU': { name: 'Cuba', flag: '🇨🇺' },
+  'NZ': { name: 'Nueva Zelanda', flag: '🇳🇿' },
+  'AE': { name: 'Emiratos Árabes', flag: '🇦🇪' },
+  'SA': { name: 'Arabia Saudita', flag: '🇸🇦' },
+}
+
 // ── Cookie Extraction ────────────────────────────────────────────────────────
 export function extractCookiesFromText(text: string): CookieDict | null {
   // JSON format (Cookie Editor export)
@@ -209,6 +285,135 @@ export async function fullCheck(cookieText: string): Promise<CheckResult> {
     token: tokenResult.token,
     link: tokenResult.link,
     metadata,
+  }
+}
+
+// ── Country Detection from NetflixId ─────────────────────────────────────────
+export function extractCountryFromNetflixId(netflixIdValue: string): string | null {
+  try {
+    const parts = netflixIdValue.split('|')
+    if (parts.length < 3) return null
+
+    const base64Part = parts[2]
+    if (!base64Part) return null
+
+    // Add padding if needed
+    const padded = base64Part + '='.repeat((4 - base64Part.length % 4) % 4)
+    const decoded = Buffer.from(padded, 'base64').toString('utf-8')
+    const json = JSON.parse(decoded)
+
+    const dig = (obj: any, ...keys: string[]): any =>
+      keys.reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), obj)
+
+    return (
+      dig(json, 'customerInfo', 'country') ||
+      dig(json, 'user', 'country') ||
+      dig(json, 'geo', 'country') ||
+      dig(json, 'authInfo', 'country') ||
+      null
+    )
+  } catch {
+    return null
+  }
+}
+
+// ── TV Activation ────────────────────────────────────────────────────────────
+export async function activateTV(cd: CookieDict, code: string): Promise<TVActivateResult> {
+  if (!cd.NetflixId || !cd.SecureNetflixId) {
+    return { success: false, error: 'Faltan cookies requeridas (NetflixId, SecureNetflixId)' }
+  }
+
+  if (!/^\d{8}$/.test(code)) {
+    return { success: false, error: 'El código debe tener 8 dígitos' }
+  }
+
+  try {
+    // Step 1: GET /tv8 to verify membership and extract authURL
+    const getRes = await axios.get('https://www.netflix.com/tv8', {
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        Cookie: buildCookieString(cd),
+      },
+      maxRedirects: 0,
+      validateStatus: (s: number) => s < 400,
+      timeout: 20000,
+    })
+
+    if (getRes.status >= 300) {
+      return { success: false, dead: true, error: 'Cookie inválida (redirección)' }
+    }
+
+    const html: string = getRes.data
+
+    // Check membership status
+    if (html.includes('membershipStatus') && !html.includes('"CURRENT_MEMBER"')) {
+      return { success: false, dead: true, error: 'No es miembro activo' }
+    }
+
+    // Extract authURL from HTML
+    let authURL = ''
+    const authInput = html.match(/name="authURL"\s+value="([^"]+)"/)
+    if (authInput) {
+      authURL = authInput[1]
+    } else {
+      const authJson = html.match(/"authURL"\s*:\s*"([^"]+)"/)
+      if (authJson) authURL = authJson[1]
+    }
+
+    if (!authURL) {
+      return { success: false, error: 'No se pudo obtener authURL de Netflix' }
+    }
+
+    // Step 2: POST /tv8 with the TV code
+    const postRes = await axios.post(
+      'https://www.netflix.com/tv8',
+      new URLSearchParams({
+        flow: 'websiteSignUp',
+        authURL,
+        flowMode: 'enterTvLoginRendezvousCode',
+        tvLoginRendezvousCode: code,
+        action: 'nextAction',
+      }).toString(),
+      {
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Cookie: buildCookieString(cd),
+        },
+        maxRedirects: 0,
+        validateStatus: (s: number) => s < 400,
+        timeout: 20000,
+      }
+    )
+
+    // Check for success redirect
+    if (postRes.status >= 300 && postRes.status < 400) {
+      const location = postRes.headers.location || ''
+      if (location.includes('/tv/out/success')) {
+        return { success: true }
+      }
+      if (location.includes('/login')) {
+        return { success: false, dead: true, error: 'Sesión expirada' }
+      }
+    }
+
+    // Check HTML response for success indicators
+    const postHtml: string = postRes.data
+    if (postHtml.includes('tv/out/success') || postHtml.includes('activateSuccess')) {
+      return { success: true }
+    }
+
+    // Try to extract error message from HTML
+    const errorMatch = postHtml.match(/class="message"[^>]*>([^<]+)/)
+    if (errorMatch) {
+      return { success: false, error: errorMatch[1].trim() }
+    }
+
+    return { success: false, error: 'No se pudo completar la activación de TV' }
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Error de red' }
   }
 }
 
