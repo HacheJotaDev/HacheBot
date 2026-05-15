@@ -1,0 +1,7 @@
+node_modules/
+auth/
+database.db
+tmp/
+*.db
+dist/
+.env
