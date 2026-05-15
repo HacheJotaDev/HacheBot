@@ -75,13 +75,13 @@ export default {
       return
     }
 
-    let msg = `✅ *COOKIES PROCESADAS*\n\n`
-    msg += `├ ✨ Nuevas: \`${result.added}\`\n`
-    msg += `├ 🔄 Duplicadas: \`${result.duplicates}\`\n`
-    if (result.failed) msg += `├ ❌ Fallidas: \`${result.failed}\`\n`
-    msg += `└ 📦 Pool: \`${stats.active}\` activas / \`${stats.total}\` total`
+    let resultMsg = `✅ *COOKIES PROCESADAS*\n\n`
+    resultMsg += `├ ✨ Nuevas: \`${result.added}\`\n`
+    resultMsg += `├ 🔄 Duplicadas: \`${result.duplicates}\`\n`
+    if (result.failed) resultMsg += `├ ❌ Fallidas: \`${result.failed}\`\n`
+    resultMsg += `└ 📦 Pool: \`${stats.active}\` activas / \`${stats.total}\` total`
 
-    await m.reply(msg)
+    await m.reply(resultMsg)
     await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
   },
 }
