@@ -9,6 +9,20 @@ const pluginCache: Map<string, any> = new Map()
 const commandIndex: Map<string, any> = new Map()
 let cacheLoaded = false
 
+// Build unique plugin list from commandIndex (deduplicated by primary command)
+function buildPluginList(): any[] {
+  const seen = new Set<string>()
+  const list: any[] = []
+  for (const [, plugin] of commandIndex.entries()) {
+    const main = plugin.command?.[0]
+    if (main && !seen.has(main)) {
+      seen.add(main)
+      list.push(plugin)
+    }
+  }
+  return list
+}
+
 const ownerSet = new Set(config.owners.map((n: string) => n + '@s.whatsapp.net'))
 const devSet = new Set(config.devs.map((n: string) => n + '@s.whatsapp.net'))
 
@@ -45,19 +59,6 @@ async function loadPlugins() {
     }
   }
   cacheLoaded = true
-
-  // Expose unique plugin list globally (for menu.ts)
-  const seen = new Set<string>()
-  const list: any[] = []
-  for (const [, plugin] of commandIndex.entries()) {
-    const main = plugin.command?.[0]
-    if (main && !seen.has(main)) {
-      seen.add(main)
-      list.push(plugin)
-    }
-  }
-  ;(global as any).hachePlugins = list
-
   console.log(chalk.green(`${pluginCache.size} plugins cargados en caché.`))
 }
 
@@ -113,13 +114,11 @@ export default async function handler(sock: any, m: any) {
     const isOwner = ownerSet.has(senderJid)
 
     // ── Permission checks ──────────────────────────────────────────────
-    // Private chat: check if priv is enabled
     if (!m.isGroup && !isOwner) {
       const privEnabled = global.db.settings['priv_enabled']?.value !== 'false'
       if (!privEnabled) return
     }
 
-    // Group chat: check if group is authorized
     if (m.isGroup && !isOwner) {
       const chatPerm = global.db.chats[m.chat]
       if (!chatPerm?.authorized) return
@@ -215,6 +214,7 @@ export default async function handler(sock: any, m: any) {
         senderJid,
         text,
         command,
+        plugins: buildPluginList(),
       })
     } catch (e: any) {
       console.error(chalk.red(`Error en plugin '${commandName}':`), e)
