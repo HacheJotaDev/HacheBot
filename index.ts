@@ -225,6 +225,8 @@ async function startBot() {
   sock.ev.on('group-participants.update', async (anu: any) => {
     try {
       const chatData = global.db.chats[anu.id] || {}
+      // Only process events in authorized groups
+      if (!chatData.authorized) return
       const metadata = await getGroupMeta(sock, anu.id)
       if (!metadata) return
       const memberCount = metadata.participants.length

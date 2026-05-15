@@ -6,6 +6,8 @@ export async function antiLink(sock: any, m: any) {
   if (!global.db.chats[m.chat]) global.db.chats[m.chat] = { antilink: false }
   const chat = global.db.chats[m.chat]
 
+  // Only run antilink in authorized groups
+  if (!chat.authorized) return
   if (!chat.antilink) return
 
   const regexLink = /chat\.whatsapp\.com\/(?:invite\/)?([0-9a-zA-Z]{20,26})/i

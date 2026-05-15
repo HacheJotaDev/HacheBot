@@ -1,18 +1,35 @@
-import axios from 'axios'
 import JSZip from 'jszip'
+import {
+  extractCookiesFromBlock,
+  buildCookieString,
+  generateToken,
+  getMetadata,
+  getPlanType,
+  getProgressBar,
+} from '../../lib/netflix.js'
 
-const API_BASE = 'https://hachejota.site/api'
-
-function getProgressBar(current: number, total: number, length = 10): string {
-  const percent = total > 0 ? current / total : 0
-  const filled = Math.floor(length * percent)
-  return `[${'▓'.repeat(filled)}${'░'.repeat(length - filled)}] ${Math.floor(percent * 100)}%`
+function formatResult(cookieStr: string, link: string, meta: any): string {
+  let c = `🍪 Netflix Cookie\n`
+  c += `-----------------------------------------------------\n`
+  c += `${cookieStr}\n`
+  c += `-----------------------------------------------------\n`
+  c += `🧃 Información\n\n`
+  if (meta?.country) c += `🌍 País: ${meta.country}\n`
+  if (meta?.plan) c += `💎 Plan: ${meta.plan}\n`
+  if (meta?.videoQuality) c += `📺 Calidad: ${meta.videoQuality}\n`
+  if (meta?.nextBillingDate) c += `📅 Próximo cobro: ${meta.nextBillingDate}\n`
+  if (meta?.memberSince) c += `🗓️ Miembro desde: ${meta.memberSince}\n`
+  if (meta?.email) c += `📧 Email: ${meta.email}\n`
+  c += `\n-----------------------------------------------------\n`
+  c += `🔗 NFToken: ${link}\n`
+  c += `-----------------------------------------------------\n`
+  return c
 }
 
 export default {
   command: ['nfchk', 'chk'],
-  description: 'Verifica archivo de cookies Netflix (.txt o .zip)',
-  category: 'web',
+  description: 'Verifica archivo .txt/.zip de cookies Netflix',
+  category: 'tools',
   run: async (sock: any, m: any, { prefix }: any) => {
     const msg = m.message
     const hasDocument =
@@ -21,7 +38,7 @@ export default {
 
     if (!hasDocument) {
       await sock.sendMessage(m.chat, {
-        text: `*Uso:* ${prefix}nfchk\n\nEnvía este comando junto con un archivo *.txt* o *.zip* con cookies de Netflix.\n\n*Formatos soportados:* Netscape, JSON, Raw`,
+        text: `*Uso:* ${prefix}nfchk\n\nEnvía este comando junto con un archivo *.txt* o *.zip* con cookies de Netflix.\n\n*Formatos:* Netscape, JSON, Raw`,
       }, { quoted: m })
       return
     }
@@ -39,92 +56,81 @@ export default {
       return
     }
 
+    const content = fileBuffer.toString('utf-8')
+    const cookiesList = extractCookiesFromBlock(content)
+
+    if (!cookiesList.length) {
+      await sock.sendMessage(m.chat, {
+        text: '⚠️ No se encontraron cookies válidas en el archivo.',
+      }, { quoted: m })
+      return
+    }
+
+    const total = cookiesList.length
     const statusMsg = await sock.sendMessage(m.chat, {
-      text: '📤 *Subiendo archivo al servidor...*',
+      text: `🔍 *Iniciando verificación...*\nTotal: *${total}* cookies`,
     }, { quoted: m })
 
-    try {
-      const formData = new FormData()
-      const fileName = msg?.documentMessage?.fileName || msg?.documentWithCaptionMessage?.message?.documentMessage?.fileName || 'cookies.txt'
+    let hits = 0
+    let fails = 0
+    const validResults: Array<{ cookieStr: string; link: string; meta: any }> = []
 
-      if (fileName.endsWith('.zip')) {
-        formData.append('file', new Blob([fileBuffer]), fileName)
-      } else {
-        formData.append('file', new Blob([fileBuffer]), fileName)
-      }
-
-      const { data } = await axios.post(`${API_BASE}/check-batch`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        timeout: 300000,
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-      })
-
-      if (!data.success) {
+    for (let i = 0; i < cookiesList.length; i++) {
+      if (i % 3 === 0 || i === total - 1) {
+        const bar = getProgressBar(i, total)
         await sock.sendMessage(m.chat, {
-          text: `❌ Error: ${data.error || 'Error desconocido'}`,
+          text: `⚡ *Verificando...*\n${bar}\nProcesados: ${i}/${total}\n✅ Hits: ${hits} | ❌ Fails: ${fails}`,
           edit: statusMsg.key,
         })
-        return
       }
 
-      const total = data.total || data.results?.length || 0
-      const hits = data.results?.filter((r: any) => r.success)?.length || 0
-      const fails = total - hits
+      const cd = cookiesList[i]
+      const tokenResult = await generateToken(cd)
 
-      await sock.sendMessage(m.chat, {
-        text: `✅ *VERIFICACIÓN COMPLETADA*\n\n├ 📊 Total: \`${total}\`\n├ ✨ Hits: \`${hits}\`\n└ 💀 Fails: \`${fails}\``,
-        edit: statusMsg.key,
-      })
-
-      if (!hits) {
-        await sock.sendMessage(m.chat, { text: '💀 No se encontraron cookies válidas.' }, { quoted: m })
-        await sock.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
-        return
+      if (tokenResult.ok && tokenResult.token) {
+        hits++
+        const meta = await getMetadata(cd)
+        validResults.push({
+          cookieStr: buildCookieString(cd),
+          link: tokenResult.link!,
+          meta,
+        })
+      } else {
+        fails++
       }
 
-      // Build ZIP with results
-      const zip = new JSZip()
-      const validResults = data.results?.filter((r: any) => r.success) || []
-
-      validResults.forEach((r: any, idx: number) => {
-        const plan = r.metadata?.plan || 'Unknown'
-        const country = r.metadata?.country || 'XX'
-        const filename = `[${plan}] [${country}] [${String(idx + 1).padStart(4, '0')}] Netflix.txt`
-
-        let content = `🍪 Netflix Cookie\n`
-        content += `-----------------------------------------------------\n`
-        content += `${r.rawCookie || ''}\n`
-        content += `-----------------------------------------------------\n`
-        content += `🧃 Información\n\n`
-        if (r.metadata?.country) content += `🌍 País: ${r.metadata.country}\n`
-        if (r.metadata?.plan) content += `💎 Plan: ${r.metadata.plan}\n`
-        if (r.metadata?.videoQuality) content += `📺 Calidad: ${r.metadata.videoQuality}\n`
-        if (r.metadata?.nextBillingDate) content += `📅 Próximo cobro: ${r.metadata.nextBillingDate}\n`
-        if (r.metadata?.email) content += `📧 Email: ${r.metadata.email}\n`
-        content += `\n-----------------------------------------------------\n`
-        if (r.link) content += `🔗 NFToken: ${r.link}\n`
-        content += `-----------------------------------------------------\n`
-
-        zip.file(filename, content)
-      })
-
-      const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)
-
-      await sock.sendMessage(m.chat, {
-        document: zipBuffer,
-        fileName: `Netflix_Checked_${timestamp}.zip`,
-        mimetype: 'application/zip',
-        caption: `📦 *${hits} cuentas válidas*\nFormato: \`[Plan] [PAIS] [XXXX] Netflix.txt\``,
-      }, { quoted: m })
-
-      await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
-    } catch (err: any) {
-      await sock.sendMessage(m.chat, {
-        text: `❌ Error: ${err.response?.data?.error || err.message}`,
-        edit: statusMsg.key,
-      })
+      if (i % 5 === 0) await new Promise(r => setTimeout(r, 300))
     }
+
+    await sock.sendMessage(m.chat, {
+      text: `✅ *PROCESO COMPLETADO*\n\n├ 📊 Total: \`${total}\`\n├ ✨ Hits: \`${hits}\`\n└ 💀 Fails: \`${fails}\``,
+      edit: statusMsg.key,
+    })
+
+    if (!validResults.length) {
+      await sock.sendMessage(m.chat, { text: '💀 No se encontraron cookies válidas.' }, { quoted: m })
+      await sock.sendMessage(m.chat, { react: { text: '❌', key: m.key } })
+      return
+    }
+
+    const zip = new JSZip()
+    validResults.forEach((r, idx) => {
+      const plan = getPlanType(r.meta?.plan)
+      const country = r.meta?.country || 'XX'
+      const filename = `[${plan}] [${country}] [${String(idx + 1).padStart(4, '0')}] Netflix.txt`
+      zip.file(filename, formatResult(r.cookieStr, r.link, r.meta))
+    })
+
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' })
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '').slice(0, 15)
+
+    await sock.sendMessage(m.chat, {
+      document: zipBuffer,
+      fileName: `Netflix_Checked_${timestamp}.zip`,
+      mimetype: 'application/zip',
+      caption: `📦 *${hits} cuentas válidas*\nFormato: \`[Plan] [PAIS] [XXXX] Netflix.txt\``,
+    }, { quoted: m })
+
+    await sock.sendMessage(m.chat, { react: { text: '✅', key: m.key } })
   },
 }

@@ -96,6 +96,21 @@ export default async function handler(sock: any, m: any) {
 
     const senderId = senderJid.split('@')[0]
     const botId = sock?.user?.id.split(':')[0] + '@s.whatsapp.net'
+    const isOwner = ownerSet.has(senderJid)
+
+    // ── Permission checks ──────────────────────────────────────────────
+    // Private chat: check if priv is enabled
+    if (!m.isGroup && !isOwner) {
+      const privEnabled = global.db.settings['priv_enabled']?.value !== 'false'
+      if (!privEnabled) return
+    }
+
+    // Group chat: check if group is authorized
+    if (m.isGroup && !isOwner) {
+      const chatPerm = global.db.chats[m.chat]
+      if (!chatPerm?.authorized) return
+    }
+    // ── End permission checks ──────────────────────────────────────────
 
     if (!global.db.users[senderId]) {
       global.db.users[senderId] = { user: m.sender, coins: 0 }
