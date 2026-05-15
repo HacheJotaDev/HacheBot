@@ -1,5 +1,5 @@
 const config = {
-  owners: [''],
+  owners: ['5214437863111'],
   devs: [''],
   prefix: ['.', '!', '#'],
 }
