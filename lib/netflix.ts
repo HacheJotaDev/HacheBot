@@ -317,7 +317,7 @@ export function extractCountryFromNetflixId(netflixIdValue: string): string | nu
   }
 }
 
-// ── TV Activation (ported from workspace — working version) ──────────────────
+// ── TV Activation (exact port from workspace/tv-activate) ──────────────────
 const TV_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 
 function getVal(html: string, key: string): string | null {
@@ -341,9 +341,10 @@ export async function activateTV(cd: CookieDict, code: string): Promise<TVActiva
   }
 
   const rawCookie = buildCookieString(cd, false)
+  console.log('[TV] Step 1: GET /tv8 ...')
 
   // ── Step 1: GET /tv8 ──
-  let getRes: Awaited<ReturnType<typeof axios.get>>
+  let getRes: any
   try {
     getRes = await axios.get('https://www.netflix.com/tv8', {
       headers: {
@@ -357,34 +358,44 @@ export async function activateTV(cd: CookieDict, code: string): Promise<TVActiva
       timeout: 25000,
     })
   } catch (e: any) {
-    return { success: false, error: `Error de conexión: ${e.message}` }
+    console.log('[TV] GET /tv8 error:', e.message)
+    return { success: false, error: `Error de conexión GET: ${e.message}` }
   }
+
+  console.log('[TV] GET /tv8 status:', getRes.status)
 
   // Redirect = dead cookie
   if ([301, 302, 303, 307].includes(getRes.status)) {
+    const loc = getRes.headers?.location || ''
+    console.log('[TV] Redirect to:', loc)
     return { success: false, dead: true, error: 'Cookie expirada (redirige a login)' }
   }
 
   if (getRes.status !== 200) {
-    return { success: false, dead: true, error: `Cookie no válida (status ${getRes.status})` }
+    return { success: false, dead: true, error: `Cookie no válida (HTTP ${getRes.status})` }
   }
 
   const html: string = getRes.data
 
   // Check membership
   const membershipStatus = getVal(html, 'membershipStatus')
+  console.log('[TV] membershipStatus:', membershipStatus)
+
   if (membershipStatus !== 'CURRENT_MEMBER') {
-    return { success: false, dead: true, error: 'La cookie no tiene suscripción activa' }
+    return { success: false, dead: true, error: `Cookie sin suscripción activa (estado: ${membershipStatus || 'UNKNOWN'})` }
   }
 
   // Extract authURL
   const authURL = getAuthURL(html)
+  console.log('[TV] authURL:', authURL ? 'OK (' + authURL.substring(0, 20) + '...)' : 'NOT FOUND')
+
   if (!authURL) {
-    return { success: false, error: 'Error interno: no se obtuvo authURL' }
+    return { success: false, error: 'No se pudo obtener authURL de Netflix' }
   }
 
   // ── Step 2: POST /tv8 ──
-  // KEY DIFFERENCE: includes "withFields" parameter — this is what was missing!
+  console.log('[TV] Step 2: POST /tv8 with code', code)
+
   const payload = new URLSearchParams({
     flow: 'websiteSignUp',
     authURL: authURL,
@@ -394,7 +405,7 @@ export async function activateTV(cd: CookieDict, code: string): Promise<TVActiva
     action: 'nextAction',
   })
 
-  let postRes: Awaited<ReturnType<typeof axios.post>>
+  let postRes: any
   try {
     postRes = await axios.post(
       'https://www.netflix.com/tv8',
@@ -414,25 +425,30 @@ export async function activateTV(cd: CookieDict, code: string): Promise<TVActiva
       }
     )
   } catch (e: any) {
-    return { success: false, error: `Error de conexión: ${e.message}` }
+    console.log('[TV] POST /tv8 error:', e.message)
+    return { success: false, error: `Error de conexión POST: ${e.message}` }
   }
+
+  console.log('[TV] POST /tv8 status:', postRes.status)
 
   // ── Step 3: Parse result ──
   if ([301, 302, 303, 307].includes(postRes.status)) {
-    const location = postRes.headers.location || ''
+    const location = postRes.headers?.location || ''
+    console.log('[TV] POST redirect to:', location)
     if (location.includes('/tv/out/success')) {
       return { success: true }
     }
     if (location.includes('/login')) {
       return { success: false, dead: true, error: 'La sesión cayó al intentar activar. Intenta de nuevo.' }
     }
-    return { success: false, error: 'Redirección inesperada. Intenta de nuevo.' }
+    return { success: false, error: `Redirección inesperada: ${location}` }
   }
 
   // Non-redirect response — check for error in HTML
   const errText = typeof postRes.data === 'string' ? postRes.data : ''
   const nfMessage = errText.match(/class="nf-message-contents"[^>]*>([\s\S]*?)<\/div>/)
-  const errorMessage = nfMessage ? nfMessage[1].trim() : 'Error al enviar el código. Verifica e intenta.'
+  const errorMessage = nfMessage ? nfMessage[1].trim() : `Error al enviar código (HTTP ${postRes.status}). Verifica e intenta.`
+  console.log('[TV] Error message:', errorMessage)
 
   return { success: false, error: errorMessage }
 }
