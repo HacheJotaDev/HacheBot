@@ -1,9 +1,12 @@
 import { readdirSync, statSync } from 'fs'
-import { join } from 'path'
+import { join, dirname } from 'path'
+import { fileURLToPath } from 'url'
 import config from './config.js'
 import chalk from 'chalk'
 import { antiLink } from './plugins/antilink.js'
 import { resolveLidToRealJid } from './lib/utils.js'
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const pluginCache: Map<string, any> = new Map()
 const commandIndex: Map<string, any> = new Map()
@@ -31,7 +34,7 @@ const getFiles = (dir: string): string[] => {
 }
 
 async function loadPlugins() {
-  const pluginFolder = join(process.cwd(), 'plugins')
+  const pluginFolder = join(__dirname, 'plugins')
   const pluginFiles = getFiles(pluginFolder)
   pluginCache.clear()
   commandIndex.clear()
