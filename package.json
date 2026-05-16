@@ -6,7 +6,7 @@
   "main": "index.ts",
   "scripts": {
   "dev": "npx tsx watch index.ts",
-  "build": "./node_modules/.bin/tsc && cp -r dist/lib/* lib/ && cp -r dist/plugins/iptv plugins/ 2>/dev/null; true",
+  "build": "./node_modules/.bin/tsc",
   "start": "node --import tsx index.ts"
   },
 
