@@ -317,33 +317,18 @@ export function extractCountryFromNetflixId(netflixIdValue: string): string | nu
   }
 }
 
-// ── TV Activation ────────────────────────────────────────────────────────────
-const TV_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+// ── TV Activation (ported from workspace — working version) ──────────────────
+const TV_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
 
-function extractAuthURL(html: string): string {
-  // Try multiple patterns Netflix uses
-  const patterns = [
-    /name="authURL"\s+value="([^"]+)"/,
-    /"authURL"\s*:\s*"([^"]+)"/,
-    /authURL=([^&"\s]+)/,
-    /"authURL":"([^"]+)"/,
-    /id="authURL"[^>]*value="([^"]+)"/,
-  ]
-  for (const p of patterns) {
-    const m = html.match(p)
-    if (m?.[1]) return m[1]
-  }
-  // Try reactContext
-  const rcMatch = html.match(/netflix\.reactContext\s*=\s*(\{.+?\})(?=;\s*<\/script>)/s)
-  if (rcMatch) {
-    try {
-      const rc = JSON.parse(rcMatch[1].replace(/\\x([0-9a-fA-F]{2})/g, (_: string, h: string) => String.fromCharCode(parseInt(h, 16))))
-      const dig = (o: any, ...ks: string[]): any => ks.reduce((a, k) => (a && typeof a === 'object' ? a[k] : undefined), o)
-      const auth = dig(rc, 'models', 'serverDefs', 'data', 'authURL') || dig(rc, 'models', 'userInfo', 'data', 'authURL') || dig(rc, 'models', 'flow', 'data', 'authURL')
-      if (auth) return String(auth)
-    } catch {}
-  }
-  return ''
+function getVal(html: string, key: string): string | null {
+  const m = html.match(new RegExp(`"${key}"\\s*:\\s*"([^"]+)"`))
+  return m ? m[1] : null
+}
+
+function getAuthURL(html: string): string | null {
+  const inputMatch = html.match(/name="authURL"\s+value="([^"]+)"/)
+  if (inputMatch) return inputMatch[1]
+  return getVal(html, 'authURL')
 }
 
 export async function activateTV(cd: CookieDict, code: string): Promise<TVActivateResult> {
@@ -355,132 +340,101 @@ export async function activateTV(cd: CookieDict, code: string): Promise<TVActiva
     return { success: false, error: 'El código debe tener 8 dígitos' }
   }
 
-  const cookieStr = buildCookieString(cd)
+  const rawCookie = buildCookieString(cd, false)
 
-  // Try up to 3 times with different approaches
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      // Step 1: GET /tv8 to verify membership and extract authURL
-      const getRes = await axios.get('https://www.netflix.com/tv8', {
+  // ── Step 1: GET /tv8 ──
+  let getRes: Awaited<ReturnType<typeof axios.get>>
+  try {
+    getRes = await axios.get('https://www.netflix.com/tv8', {
+      headers: {
+        'User-Agent': TV_UA,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Cookie: rawCookie,
+      },
+      maxRedirects: 0,
+      validateStatus: () => true,
+      timeout: 25000,
+    })
+  } catch (e: any) {
+    return { success: false, error: `Error de conexión: ${e.message}` }
+  }
+
+  // Redirect = dead cookie
+  if ([301, 302, 303, 307].includes(getRes.status)) {
+    return { success: false, dead: true, error: 'Cookie expirada (redirige a login)' }
+  }
+
+  if (getRes.status !== 200) {
+    return { success: false, dead: true, error: `Cookie no válida (status ${getRes.status})` }
+  }
+
+  const html: string = getRes.data
+
+  // Check membership
+  const membershipStatus = getVal(html, 'membershipStatus')
+  if (membershipStatus !== 'CURRENT_MEMBER') {
+    return { success: false, dead: true, error: 'La cookie no tiene suscripción activa' }
+  }
+
+  // Extract authURL
+  const authURL = getAuthURL(html)
+  if (!authURL) {
+    return { success: false, error: 'Error interno: no se obtuvo authURL' }
+  }
+
+  // ── Step 2: POST /tv8 ──
+  // KEY DIFFERENCE: includes "withFields" parameter — this is what was missing!
+  const payload = new URLSearchParams({
+    flow: 'websiteSignUp',
+    authURL: authURL,
+    flowMode: 'enterTvLoginRendezvousCode',
+    withFields: 'tvLoginRendezvousCode,isTvUrl2',
+    tvLoginRendezvousCode: code,
+    action: 'nextAction',
+  })
+
+  let postRes: Awaited<ReturnType<typeof axios.post>>
+  try {
+    postRes = await axios.post(
+      'https://www.netflix.com/tv8',
+      payload.toString(),
+      {
         headers: {
           'User-Agent': TV_UA,
+          'Cookie': rawCookie,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': 'https://www.netflix.com/tv8',
+          'Origin': 'https://www.netflix.com',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-          'Accept-Language': 'en-US,en;q=0.5',
-          Cookie: cookieStr,
         },
         maxRedirects: 0,
         validateStatus: () => true,
         timeout: 25000,
-      })
-
-      // Redirect to login = dead cookie
-      if (getRes.status >= 300 && getRes.status < 400) {
-        const loc = getRes.headers.location || ''
-        if (loc.includes('/login')) {
-          return { success: false, dead: true, error: 'Cookie expirada (redirige a login)' }
-        }
-        // Follow redirect for other 3xx
-        return { success: false, dead: true, error: 'Cookie inválida (redirección)' }
       }
-
-      const html: string = getRes.data
-
-      // Check membership status
-      if (html.includes('"membershipStatus"') && !html.includes('"CURRENT_MEMBER"')) {
-        return { success: false, dead: true, error: 'No es miembro activo' }
-      }
-
-      // If already on a page that mentions code entry, proceed
-      const authURL = extractAuthURL(html)
-      if (!authURL) {
-        if (attempt < 3) {
-          // Try a fresh request
-          await new Promise(r => setTimeout(r, 1000))
-          continue
-        }
-        return { success: false, error: 'No se pudo obtener authURL de Netflix' }
-      }
-
-      // Step 2: POST /tv8 with the TV code
-      const postRes = await axios.post(
-        'https://www.netflix.com/tv8',
-        new URLSearchParams({
-          authURL,
-          flow: 'websiteSignUp',
-          flowMode: 'enterTvLoginRendezvousCode',
-          tvLoginRendezvousCode: code,
-          action: 'nextAction',
-        }).toString(),
-        {
-          headers: {
-            'User-Agent': TV_UA,
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://www.netflix.com',
-            'Referer': 'https://www.netflix.com/tv8',
-            Cookie: cookieStr,
-          },
-          maxRedirects: 0,
-          validateStatus: () => true,
-          timeout: 25000,
-        }
-      )
-
-      // Check for success redirect
-      if (postRes.status >= 300 && postRes.status < 400) {
-        const location = postRes.headers.location || ''
-        if (location.includes('/tv/out/success') || location.includes('success')) {
-          return { success: true }
-        }
-        if (location.includes('/login')) {
-          return { success: false, dead: true, error: 'Sesión expirada durante activación' }
-        }
-        // Some redirects after POST are success too
-        if (location.includes('/tv') || location.includes('/browse')) {
-          return { success: true }
-        }
-      }
-
-      // Check HTML response for success indicators
-      const postHtml: string = postRes.data
-      if (typeof postHtml === 'string') {
-        if (postHtml.includes('tv/out/success') || postHtml.includes('activateSuccess') || postHtml.includes('TVActivationSuccess')) {
-          return { success: true }
-        }
-        // Check for error patterns
-        if (postHtml.includes('invalidCode') || postHtml.includes('codeInvalid')) {
-          return { success: false, error: 'Código inválido o expirado' }
-        }
-        if (postHtml.includes('tooManyAttempts') || postHtml.includes('rateLimit')) {
-          return { success: false, error: 'Demasiados intentos, espera un momento' }
-        }
-        // Extract error message from Netflix
-        const errorMatch = postHtml.match(/class="message"[^>]*>([^<]+)/) ||
-                           postHtml.match(/"errorMessage":"([^"]+)"/) ||
-                           postHtml.match(/"message":"([^"]+)"/)
-        if (errorMatch) {
-          return { success: false, error: errorMatch[1].trim() }
-        }
-      }
-
-      // If we got a 200 with no success indicators, might need to try the API approach
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 1500))
-        continue
-      }
-
-      return { success: false, error: 'No se pudo completar la activación de TV' }
-    } catch (e: any) {
-      if (attempt < 3) {
-        await new Promise(r => setTimeout(r, 2000))
-        continue
-      }
-      return { success: false, error: e.message || 'Error de red' }
-    }
+    )
+  } catch (e: any) {
+    return { success: false, error: `Error de conexión: ${e.message}` }
   }
 
-  return { success: false, error: 'Falló después de múltiples intentos' }
+  // ── Step 3: Parse result ──
+  if ([301, 302, 303, 307].includes(postRes.status)) {
+    const location = postRes.headers.location || ''
+    if (location.includes('/tv/out/success')) {
+      return { success: true }
+    }
+    if (location.includes('/login')) {
+      return { success: false, dead: true, error: 'La sesión cayó al intentar activar. Intenta de nuevo.' }
+    }
+    return { success: false, error: 'Redirección inesperada. Intenta de nuevo.' }
+  }
+
+  // Non-redirect response — check for error in HTML
+  const errText = typeof postRes.data === 'string' ? postRes.data : ''
+  const nfMessage = errText.match(/class="nf-message-contents"[^>]*>([\s\S]*?)<\/div>/)
+  const errorMessage = nfMessage ? nfMessage[1].trim() : 'Error al enviar el código. Verifica e intenta.'
+
+  return { success: false, error: errorMessage }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
